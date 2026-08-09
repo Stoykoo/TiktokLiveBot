@@ -181,61 +181,74 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    if (commandName === 'status') {
-        await interaction.deferReply({ ephemeral: true });
-        
-        let streamInfo = { isLive: false };
-        if (PLATFORM === 'tiktok') {
-            streamInfo = await checkTikTokLive(STREAMER_USERNAME);
-        } else if (PLATFORM === 'twitch') {
-            streamInfo = await checkTwitchLive(STREAMER_USERNAME, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
+    try {
+        if (commandName === 'status') {
+            await interaction.deferReply({ ephemeral: true });
+            
+            let streamInfo = { isLive: false };
+            if (PLATFORM === 'tiktok') {
+                streamInfo = await checkTikTokLive(STREAMER_USERNAME);
+            } else if (PLATFORM === 'twitch') {
+                streamInfo = await checkTwitchLive(STREAMER_USERNAME, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
+            }
+
+            const statusText = streamInfo.isLive 
+                ? `🔴 **¡EN VIVO AHORA!**\nTítulo: ${streamInfo.title}\nLink: ${streamInfo.roomLink}`
+                : `OFFLINE. @${STREAMER_USERNAME} no está transmitiendo en este momento.`;
+
+            return interaction.editReply({
+                content: `**Estado actual para @${STREAMER_USERNAME} (${PLATFORM.toUpperCase()}):**\n${statusText}`
+            });
         }
 
-        const statusText = streamInfo.isLive 
-            ? `🔴 **¡EN VIVO AHORA!**\nTítulo: ${streamInfo.title}\nLink: ${streamInfo.roomLink}`
-            : `OFFLINE. @${STREAMER_USERNAME} no está transmitiendo en este momento.`;
+        if (commandName === 'test-notify') {
+            await interaction.deferReply({ ephemeral: true });
 
-        return interaction.editReply({
-            content: `**Estado actual para @${STREAMER_USERNAME} (${PLATFORM.toUpperCase()}):**\n${statusText}`
-        });
-    }
+            if (!CHANNEL_ID) {
+                return interaction.editReply({ content: '❌ El `NOTIFICATION_CHANNEL_ID` no está configurado en el archivo .env' });
+            }
 
-    if (commandName === 'test-notify') {
-        if (!CHANNEL_ID) {
-            return interaction.reply({ content: '❌ El `NOTIFICATION_CHANNEL_ID` no está configurado en el archivo .env', ephemeral: true });
+            const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
+            if (!channel) {
+                return interaction.editReply({ content: `❌ No se encontró el canal con ID \`${CHANNEL_ID}\`. Revisa los permisos del bot o el ID del canal.` });
+            }
+
+            const platformUrl = PLATFORM === 'twitch' ? `https://twitch.tv/${STREAMER_USERNAME || 'TuCanal'}` : `https://tiktok.com/@${STREAMER_USERNAME || 'TuCanal'}`;
+
+            const testPayload = createLiveEmbed({
+                platform: PLATFORM,
+                username: STREAMER_USERNAME || 'TuCanalTikTok',
+                title: '🎮 ¡ESTA ES UNA PRUEBA DE NOTIFICACIÓN DE DIRECTO!',
+                roomLink: platformUrl,
+                viewerCount: 123,
+                coverUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=1000&auto=format&fit=crop',
+                avatarUrl: client.user.displayAvatarURL(),
+                pingRole: PING_ROLE
+            });
+
+            await channel.send(testPayload);
+            return interaction.editReply({ content: `✅ Notificación de prueba enviada con éxito al canal <#${CHANNEL_ID}>.` });
         }
 
-        const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
-        if (!channel) {
-            return interaction.reply({ content: `❌ No se encontró el canal con ID \`${CHANNEL_ID}\`.`, ephemeral: true });
+        if (commandName === 'config-bot') {
+            await interaction.deferReply({ ephemeral: true });
+            return interaction.editReply({
+                content: `⚙️ **Configuración Actual del Bot:**\n` +
+                         `• **Plataforma:** \`${PLATFORM}\` \n` +
+                         `• **Usuario:** \`@${STREAMER_USERNAME || 'Sin configurar'}\` \n` +
+                         `• **Canal de Notificaciones:** ${CHANNEL_ID ? `<#${CHANNEL_ID}>` : '`No configurado`'} \n` +
+                         `• **Rol Ping:** \`${PING_ROLE || 'Ninguno'}\` \n` +
+                         `• **Frecuencia de Check:** \`Cada ${CHECK_INTERVAL_SECONDS} segundos\``
+            });
         }
-
-        await interaction.reply({ content: `🚀 Enviando notificación de prueba al canal <#${CHANNEL_ID}>...`, ephemeral: true });
-
-        const testPayload = createLiveEmbed({
-            platform: PLATFORM,
-            username: STREAMER_USERNAME || 'TuCanalTikTok',
-            title: '🎮 ¡ESTA ES UNA PRUEBA DE NOTIFICACIÓN DE DIRECTO!',
-            roomLink: `https://${PLATFORM}.com/@${STREAMER_USERNAME || 'TuCanalTikTok'}`,
-            viewerCount: 123,
-            coverUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=1000&auto=format&fit=crop',
-            avatarUrl: client.user.displayAvatarURL(),
-            pingRole: PING_ROLE
-        });
-
-        await channel.send(testPayload);
-    }
-
-    if (commandName === 'config-bot') {
-        return interaction.reply({
-            content: `⚙️ **Configuración Actual del Bot:**\n` +
-                     `• **Plataforma:** \`${PLATFORM}\` \n` +
-                     `• **Usuario:** \`@${STREAMER_USERNAME || 'Sin configurar'}\` \n` +
-                     `• **Canal de Notificaciones:** <#${CHANNEL_ID}> \n` +
-                     `• **Rol Ping:** \`${PING_ROLE || 'Ninguno'}\` \n` +
-                     `• **Frecuencia de Check:** \`Cada ${CHECK_INTERVAL_SECONDS} segundos\``,
-            ephemeral: true
-        });
+    } catch (err) {
+        console.error(`[Interaction Error - /${commandName}]`, err);
+        const errorMessage = `❌ Error al ejecutar el comando: ${err.message}`;
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({ content: errorMessage }).catch(() => {});
+        } else {
+            await interaction.reply({ content: errorMessage, ephemeral: true }).catch(() => {});
+        }
     }
 });
 
