@@ -1,5 +1,15 @@
 require('dotenv').config();
+const http = require('http');
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ActivityType } = require('discord.js');
+
+// Servidor HTTP simple para cumplir con el requisito de puerto de Render Web Service
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('🤖 TikTok Live Discord Bot está funcionando 24/7!');
+}).listen(PORT, () => {
+    console.log(`🌐 Servidor HTTP de salud escuchando en el puerto ${PORT}`);
+});
 const { checkTikTokLive } = require('./checkers/tiktok');
 const { checkTwitchLive } = require('./checkers/twitch');
 const { createLiveEmbed } = require('./embeds/liveEmbed');
