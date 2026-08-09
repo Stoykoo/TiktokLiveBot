@@ -34,8 +34,9 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds]
 });
 
-// Estado en memoria para evitar notificaciones duplicadas
-let wasLive = false;
+// Estado en memoria para evitar notificaciones duplicadas por plataforma
+let wasLiveTikTok = false;
+let wasLiveTwitch = false;
 
 // Registro de comandos Slash
 const commands = [
@@ -64,62 +65,89 @@ async function registerSlashCommands(clientId) {
     }
 }
 
-// Función principal de verificación de directo
+// Función principal de verificación de directo (Soporta TikTok y Twitch simultáneamente)
 async function checkStreamStatus() {
-    if (!STREAMER_USERNAME || !CHANNEL_ID) {
+    if (!STREAMER_USERNAME || !CHANNEL_ID) return;
+
+    const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
+    if (!channel) {
+        console.warn(`[WARN] No se pudo encontrar el canal con ID ${CHANNEL_ID}`);
         return;
     }
 
-    try {
-        let streamInfo = { isLive: false };
+    const checkTikTok = PLATFORM === 'tiktok' || PLATFORM === 'both' || PLATFORM === 'all';
+    const checkTwitch = (PLATFORM === 'twitch' || PLATFORM === 'both' || PLATFORM === 'all') || (TWITCH_CLIENT_ID && TWITCH_CLIENT_SECRET);
 
-        if (PLATFORM === 'tiktok') {
-            streamInfo = await checkTikTokLive(STREAMER_USERNAME);
-        } else if (PLATFORM === 'twitch') {
-            streamInfo = await checkTwitchLive(STREAMER_USERNAME, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
+    // 1. Revisar TikTok
+    if (checkTikTok) {
+        try {
+            const tiktokInfo = await checkTikTokLive(STREAMER_USERNAME);
+            if (tiktokInfo.isLive && !wasLiveTikTok) {
+                console.log(`🎉 ¡DIRECTO EN TIKTOK DETECTADO! Enviando alerta para @${STREAMER_USERNAME}...`);
+                const payload = createLiveEmbed({
+                    platform: 'tiktok',
+                    username: STREAMER_USERNAME,
+                    title: tiktokInfo.title,
+                    roomLink: tiktokInfo.roomLink,
+                    viewerCount: tiktokInfo.viewerCount,
+                    coverUrl: tiktokInfo.coverUrl,
+                    avatarUrl: tiktokInfo.avatarUrl,
+                    pingRole: PING_ROLE
+                });
+                await channel.send(payload);
+                wasLiveTikTok = true;
+
+                client.user.setPresence({
+                    activities: [{ name: `🔴 TikTok Live @${STREAMER_USERNAME}`, type: ActivityType.Streaming, url: tiktokInfo.roomLink }],
+                    status: 'online'
+                });
+            } else if (!tiktokInfo.isLive && wasLiveTikTok) {
+                console.log(`ℹ️ El directo de TikTok de @${STREAMER_USERNAME} ha finalizado.`);
+                wasLiveTikTok = false;
+            }
+        } catch (err) {
+            console.error('[TikTok Check Error]', err.message);
         }
+    }
 
-        const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
-        if (!channel) {
-            console.warn(`[WARN] No se pudo encontrar el canal con ID ${CHANNEL_ID}`);
-            return;
+    // 2. Revisar Twitch
+    if (checkTwitch && TWITCH_CLIENT_ID && TWITCH_CLIENT_SECRET) {
+        try {
+            const twitchInfo = await checkTwitchLive(STREAMER_USERNAME, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
+            if (twitchInfo.isLive && !wasLiveTwitch) {
+                console.log(`🎉 ¡DIRECTO EN TWITCH DETECTADO! Enviando alerta para ${STREAMER_USERNAME}...`);
+                const payload = createLiveEmbed({
+                    platform: 'twitch',
+                    username: STREAMER_USERNAME,
+                    title: twitchInfo.title,
+                    roomLink: twitchInfo.roomLink,
+                    viewerCount: twitchInfo.viewerCount,
+                    coverUrl: twitchInfo.coverUrl,
+                    avatarUrl: twitchInfo.avatarUrl,
+                    pingRole: PING_ROLE
+                });
+                await channel.send(payload);
+                wasLiveTwitch = true;
+
+                client.user.setPresence({
+                    activities: [{ name: `🔴 Twitch Live @${STREAMER_USERNAME}`, type: ActivityType.Streaming, url: twitchInfo.roomLink }],
+                    status: 'online'
+                });
+            } else if (!twitchInfo.isLive && wasLiveTwitch) {
+                console.log(`ℹ️ El directo de Twitch de @${STREAMER_USERNAME} ha finalizado.`);
+                wasLiveTwitch = false;
+            }
+        } catch (err) {
+            console.error('[Twitch Check Error]', err.message);
         }
+    }
 
-        if (streamInfo.isLive && !wasLive) {
-            console.log(`🎉 ¡DIRECTO DETECTADO! Enviando alerta para @${STREAMER_USERNAME}...`);
-            
-            const payload = createLiveEmbed({
-                platform: PLATFORM,
-                username: STREAMER_USERNAME,
-                title: streamInfo.title,
-                roomLink: streamInfo.roomLink,
-                viewerCount: streamInfo.viewerCount,
-                coverUrl: streamInfo.coverUrl,
-                avatarUrl: streamInfo.avatarUrl,
-                pingRole: PING_ROLE
-            });
-
-            await channel.send(payload);
-            wasLive = true;
-
-            // Actualizar presencia del bot
-            client.user.setPresence({
-                activities: [{ name: `🔴 Directo de @${STREAMER_USERNAME}`, type: ActivityType.Streaming, url: streamInfo.roomLink }],
-                status: 'online'
-            });
-
-        } else if (!streamInfo.isLive && wasLive) {
-            console.log(`ℹ️ El directo de @${STREAMER_USERNAME} ha finalizado.`);
-            wasLive = false;
-
-            // Restaurar presencia del bot
-            client.user.setPresence({
-                activities: [{ name: `👀 Monitoreando @${STREAMER_USERNAME}`, type: ActivityType.Watching }],
-                status: 'online'
-            });
-        }
-    } catch (error) {
-        console.error('[Stream Checker Loop Error]', error.message);
+    // Si ninguno está en directo, mantener estado normal
+    if (!wasLiveTikTok && !wasLiveTwitch) {
+        client.user.setPresence({
+            activities: [{ name: `👀 Monitoreando @${STREAMER_USERNAME}`, type: ActivityType.Watching }],
+            status: 'online'
+        });
     }
 }
 
