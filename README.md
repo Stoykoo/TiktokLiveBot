@@ -4,12 +4,13 @@ Este bot monitorea automáticamente tu canal de **TikTok** y **Twitch** en simul
 
 ---
 
-## ✨ Características Principal
+## ✨ Características Principales
 
 - 📡 **Monitoreo Simultáneo (Dual Platform):** Revisa TikTok y Twitch al mismo tiempo.
 - ⚡ **Cero Configuración Compleja en Twitch:** Funciona out-of-the-box sin necesidad de API keys de desarrollador.
 - 👥 **Nombres de Usuario Independientes:** Soporta usuarios diferentes en TikTok (`STREAMER_USERNAME`) y Twitch (`TWITCH_STREAMER_USERNAME`).
-- 🤖 **24/7 en Render:** Incluye servidor HTTP de salud con **Auto Keep-Alive** interno para evitar que el plan gratuito de Render apague el bot.
+- 🐳 **Soporte Completo para Docker:** Incluye `Dockerfile` y `docker-compose.yml` preconfigurados para despliegues portables y aislados.
+- 🤖 **24/7 en Render / VPS:** Incluye servidor HTTP de salud con **Auto Keep-Alive** interno para evitar que el plan gratuito de Render apague el bot.
 - 🎨 **Diseño Premium:** Tarjetas embed avanzadas con contadores de espectadores, miniatura, avatar y botones de enlace directo.
 - 🔔 **Menciones Configurables:** `@everyone`, `@here` o menciones de roles específicos por ID.
 - 💬 **Comandos Slash:** `/status`, `/test-notify`, `/config-bot`.
@@ -18,23 +19,9 @@ Este bot monitorea automáticamente tu canal de **TikTok** y **Twitch** en simul
 
 ## 🛠️ Requisitos Previos
 
-- Node.js (v18+).
+- Node.js (v18+) o **Docker**.
 - Cuenta en Discord y permisos de Administrador en el servidor.
-- Un servicio de Hosting (ej. [Render](https://render.com)).
-
----
-
-## 🚀 Guía de Configuración Paso a Paso
-
-### 1. Crear el Bot en Discord
-
-1. Entra a [Discord Developer Portal](https://discord.com/developers/applications).
-2. Haz clic en **New Application**, asígnale un nombre (ej: `DirectosBot`).
-3. Ve a **Bot** -> Haz clic en **Reset Token** y copia el **Token de tu Bot**.
-4. Ve a **OAuth2** -> **URL Generator**:
-   - Marca **Scopes**: `bot`, `applications.commands`.
-   - Marca **Bot Permissions**: `Send Messages`, `Embed Links`, `Mention Everyone`, `Read Message History`.
-5. Copia la URL generada, ábrela en tu navegador e invita al bot a tu servidor.
+- Un servicio de Hosting (ej. [Render](https://render.com), Railway, VPS).
 
 ---
 
@@ -68,17 +55,39 @@ RENDER_EXTERNAL_URL=https://tu-app-en-render.onrender.com
 
 ---
 
+## 🐳 Ejecución con Docker (Recomendado)
+
+### Opción A: Usando Docker Compose
+```bash
+# Iniciar el bot en segundo plano
+docker compose up -d
+
+# Ver los logs en tiempo real
+docker compose logs -f
+
+# Detener el bot
+docker compose down
+```
+
+### Opción B: Usando Docker CLI
+```bash
+# Construir la imagen
+docker build -t tiktok-live-bot .
+
+# Ejecutar el contenedor
+docker run -d --name tiktok_bot --env-file .env -p 3000:3000 tiktok-live-bot
+```
+
+---
+
 ## ☁️ Despliegue 24/7 en Render
 
 1. Subes este código a tu repositorio de **GitHub**.
 2. Entras a **[Render.com](https://render.com)** -> **New Web Service**.
 3. Conectas tu repositorio de GitHub.
-4. Configuras:
-   - **Environment:** `Node`
-   - **Build Command:** `npm install`
-   - **Start Command:** `node src/index.js`
+4. Render detectará automáticamente el `Dockerfile` (o puedes elegir `Node`).
 5. En la sección **Environment Variables**, agregas las variables de tu `.env`.
-6. ¡Listo! Render desplegará el bot y se mantendrá activo 24/7.
+6. ¡Listo! Render desplegará el bot usando Docker y se mantendrá activo 24/7.
 
 ---
 
