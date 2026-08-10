@@ -90,8 +90,8 @@ async function checkStreamStatus() {
         return;
     }
 
-    const checkTikTok = (PLATFORM === 'tiktok' || PLATFORM === 'both' || PLATFORM === 'all') && STREAMER_USERNAME;
-    const checkTwitch = (PLATFORM === 'twitch' || PLATFORM === 'both' || PLATFORM === 'all') && TWITCH_STREAMER_USERNAME;
+    const checkTikTok = Boolean(STREAMER_USERNAME) && PLATFORM !== 'twitch';
+    const checkTwitch = Boolean(TWITCH_STREAMER_USERNAME) && PLATFORM !== 'tiktok';
 
     // 1. Revisar TikTok
     if (checkTikTok) {
@@ -208,8 +208,8 @@ client.on('interactionCreate', async interaction => {
 
     try {
         if (commandName === 'status') {
-            const checkTikTok = (PLATFORM === 'tiktok' || PLATFORM === 'both' || PLATFORM === 'all') && STREAMER_USERNAME;
-            const checkTwitch = (PLATFORM === 'twitch' || PLATFORM === 'both' || PLATFORM === 'all') && TWITCH_STREAMER_USERNAME;
+            const checkTikTok = Boolean(STREAMER_USERNAME) && PLATFORM !== 'twitch';
+            const checkTwitch = Boolean(TWITCH_STREAMER_USERNAME) && PLATFORM !== 'tiktok';
 
             const results = [];
 
@@ -231,8 +231,10 @@ client.on('interactionCreate', async interaction => {
                 results.push('⚠️ No se ha configurado ningún usuario o plataforma válida.');
             }
 
+            const headerPlatform = (checkTikTok && checkTwitch) ? 'TIKTOK & TWITCH' : (checkTwitch ? 'TWITCH' : 'TIKTOK');
+
             return interaction.editReply({
-                content: `**Estado actual de Directos (${PLATFORM.toUpperCase()}):**\n\n` + results.join('\n\n')
+                content: `**Estado actual de Directos (${headerPlatform}):**\n\n` + results.join('\n\n')
             });
         }
 
