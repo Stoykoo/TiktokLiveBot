@@ -96,3 +96,10 @@ docker run -d --name tiktok_bot --env-file .env -p 3000:3000 tiktok-live-bot
 - `/status` -> Muestra el estado actual del directo en TikTok y Twitch.
 - `/test-notify` -> Envía un mensaje de aviso de prueba al canal configurado.
 - `/config-bot` -> Muestra la configuración activa del bot.
+
+---
+
+## 📄 Licencia
+
+Este proyecto está bajo la Licencia **MIT**. Consulta el archivo [LICENSE](LICENSE) para obtener más detalles.
+
