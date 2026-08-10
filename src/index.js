@@ -33,6 +33,7 @@ const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.NOTIFICATION_CHANNEL_ID;
 const PLATFORM = (process.env.STREAM_PLATFORM || 'tiktok').toLowerCase();
 const STREAMER_USERNAME = process.env.STREAMER_USERNAME || '';
+const TWITCH_STREAMER_USERNAME = process.env.TWITCH_STREAMER_USERNAME || STREAMER_USERNAME;
 const PING_ROLE = process.env.PING_ROLE || ''; // 'everyone', 'here', o ID del rol
 const CHECK_INTERVAL_SECONDS = parseInt(process.env.CHECK_INTERVAL_SECONDS || '60', 10);
 const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID || '';
@@ -81,7 +82,7 @@ async function registerSlashCommands(clientId) {
 
 // Función principal de verificación de directo (Soporta TikTok y Twitch simultáneamente)
 async function checkStreamStatus() {
-    if (!STREAMER_USERNAME || !CHANNEL_ID) return;
+    if (!CHANNEL_ID) return;
 
     const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
     if (!channel) {
@@ -89,8 +90,8 @@ async function checkStreamStatus() {
         return;
     }
 
-    const checkTikTok = PLATFORM === 'tiktok' || PLATFORM === 'both' || PLATFORM === 'all';
-    const checkTwitch = (PLATFORM === 'twitch' || PLATFORM === 'both' || PLATFORM === 'all') || (TWITCH_CLIENT_ID && TWITCH_CLIENT_SECRET);
+    const checkTikTok = (PLATFORM === 'tiktok' || PLATFORM === 'both' || PLATFORM === 'all') && STREAMER_USERNAME;
+    const checkTwitch = (PLATFORM === 'twitch' || PLATFORM === 'both' || PLATFORM === 'all') && TWITCH_STREAMER_USERNAME;
 
     // 1. Revisar TikTok
     if (checkTikTok) {
@@ -125,14 +126,14 @@ async function checkStreamStatus() {
     }
 
     // 2. Revisar Twitch
-    if (checkTwitch && TWITCH_CLIENT_ID && TWITCH_CLIENT_SECRET) {
+    if (checkTwitch) {
         try {
-            const twitchInfo = await checkTwitchLive(STREAMER_USERNAME, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
+            const twitchInfo = await checkTwitchLive(TWITCH_STREAMER_USERNAME, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
             if (twitchInfo.isLive && !wasLiveTwitch) {
-                console.log(`🎉 ¡DIRECTO EN TWITCH DETECTADO! Enviando alerta para ${STREAMER_USERNAME}...`);
+                console.log(`🎉 ¡DIRECTO EN TWITCH DETECTADO! Enviando alerta para ${TWITCH_STREAMER_USERNAME}...`);
                 const payload = createLiveEmbed({
                     platform: 'twitch',
-                    username: STREAMER_USERNAME,
+                    username: TWITCH_STREAMER_USERNAME,
                     title: twitchInfo.title,
                     roomLink: twitchInfo.roomLink,
                     viewerCount: twitchInfo.viewerCount,
@@ -144,11 +145,11 @@ async function checkStreamStatus() {
                 wasLiveTwitch = true;
 
                 client.user.setPresence({
-                    activities: [{ name: `🔴 Twitch Live @${STREAMER_USERNAME}`, type: ActivityType.Streaming, url: twitchInfo.roomLink }],
+                    activities: [{ name: `🔴 Twitch Live @${TWITCH_STREAMER_USERNAME}`, type: ActivityType.Streaming, url: twitchInfo.roomLink }],
                     status: 'online'
                 });
             } else if (!twitchInfo.isLive && wasLiveTwitch) {
-                console.log(`ℹ️ El directo de Twitch de @${STREAMER_USERNAME} ha finalizado.`);
+                console.log(`ℹ️ El directo de Twitch de @${TWITCH_STREAMER_USERNAME} ha finalizado.`);
                 wasLiveTwitch = false;
             }
         } catch (err) {
@@ -159,7 +160,7 @@ async function checkStreamStatus() {
     // Si ninguno está en directo, mantener estado normal
     if (!wasLiveTikTok && !wasLiveTwitch) {
         client.user.setPresence({
-            activities: [{ name: `👀 Monitoreando @${STREAMER_USERNAME}`, type: ActivityType.Watching }],
+            activities: [{ name: `👀 Monitoreando @${STREAMER_USERNAME || TWITCH_STREAMER_USERNAME}`, type: ActivityType.Watching }],
             status: 'online'
         });
     }
@@ -169,7 +170,9 @@ async function checkStreamStatus() {
 client.once('ready', async () => {
     console.log(`=================================================`);
     console.log(`🤖 Bot iniciado como: ${client.user.tag}`);
-    console.log(`📺 Monitoreando canal de ${PLATFORM.toUpperCase()}: @${STREAMER_USERNAME || '(No configurado)'}`);
+    console.log(`📺 Modo Plataforma: ${PLATFORM.toUpperCase()}`);
+    console.log(`🎵 TikTok Username: @${STREAMER_USERNAME || '(No configurado)'}`);
+    console.log(`💜 Twitch Username: @${TWITCH_STREAMER_USERNAME || '(No configurado)'}`);
     console.log(`⏱️ Intervalo de revisión: cada ${CHECK_INTERVAL_SECONDS} segundos`);
     console.log(`=================================================`);
 
@@ -178,7 +181,7 @@ client.once('ready', async () => {
 
     // Configurar presencia inicial
     client.user.setPresence({
-        activities: [{ name: `👀 @${STREAMER_USERNAME || 'TikTok Live'}`, type: ActivityType.Watching }],
+        activities: [{ name: `👀 Monitoreando directos`, type: ActivityType.Watching }],
         status: 'online'
     });
 
@@ -205,19 +208,31 @@ client.on('interactionCreate', async interaction => {
 
     try {
         if (commandName === 'status') {
-            let streamInfo = { isLive: false };
-            if (PLATFORM === 'tiktok') {
-                streamInfo = await checkTikTokLive(STREAMER_USERNAME);
-            } else if (PLATFORM === 'twitch') {
-                streamInfo = await checkTwitchLive(STREAMER_USERNAME, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
+            const checkTikTok = (PLATFORM === 'tiktok' || PLATFORM === 'both' || PLATFORM === 'all') && STREAMER_USERNAME;
+            const checkTwitch = (PLATFORM === 'twitch' || PLATFORM === 'both' || PLATFORM === 'all') && TWITCH_STREAMER_USERNAME;
+
+            const results = [];
+
+            if (checkTikTok) {
+                const tiktokInfo = await checkTikTokLive(STREAMER_USERNAME);
+                results.push(tiktokInfo.isLive
+                    ? `🔴 **TikTok (@${STREAMER_USERNAME}):** ¡EN VIVO!\n*${tiktokInfo.title}*\n${tiktokInfo.roomLink}`
+                    : `⚪ **TikTok (@${STREAMER_USERNAME}):** Offline`);
             }
 
-            const statusText = streamInfo.isLive 
-                ? `🔴 **¡EN VIVO AHORA!**\nTítulo: ${streamInfo.title}\nLink: ${streamInfo.roomLink}`
-                : `OFFLINE. @${STREAMER_USERNAME} no está transmitiendo en este momento.`;
+            if (checkTwitch) {
+                const twitchInfo = await checkTwitchLive(TWITCH_STREAMER_USERNAME, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
+                results.push(twitchInfo.isLive
+                    ? `🔴 **Twitch (@${TWITCH_STREAMER_USERNAME}):** ¡EN VIVO!\n*${twitchInfo.title}*\n${twitchInfo.roomLink}`
+                    : `⚪ **Twitch (@${TWITCH_STREAMER_USERNAME}):** Offline`);
+            }
+
+            if (results.length === 0) {
+                results.push('⚠️ No se ha configurado ningún usuario o plataforma válida.');
+            }
 
             return interaction.editReply({
-                content: `**Estado actual para @${STREAMER_USERNAME} (${PLATFORM.toUpperCase()}):**\n${statusText}`
+                content: `**Estado actual de Directos (${PLATFORM.toUpperCase()}):**\n\n` + results.join('\n\n')
             });
         }
 
@@ -231,11 +246,13 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply({ content: `❌ No se encontró el canal con ID \`${CHANNEL_ID}\`. Revisa los permisos del bot o el ID del canal.` });
             }
 
-            const platformUrl = PLATFORM === 'twitch' ? `https://twitch.tv/${STREAMER_USERNAME || 'TuCanal'}` : `https://tiktok.com/@${STREAMER_USERNAME || 'TuCanal'}`;
+            const testPlatform = PLATFORM === 'twitch' ? 'twitch' : 'tiktok';
+            const testUser = testPlatform === 'twitch' ? TWITCH_STREAMER_USERNAME : STREAMER_USERNAME;
+            const platformUrl = testPlatform === 'twitch' ? `https://twitch.tv/${testUser}` : `https://tiktok.com/@${testUser}`;
 
             const testPayload = createLiveEmbed({
-                platform: PLATFORM,
-                username: STREAMER_USERNAME || 'TuCanalTikTok',
+                platform: testPlatform,
+                username: testUser || 'TuCanal',
                 title: '🎮 ¡ESTA ES UNA PRUEBA DE NOTIFICACIÓN DE DIRECTO!',
                 roomLink: platformUrl,
                 viewerCount: 123,
@@ -252,7 +269,8 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply({
                 content: `⚙️ **Configuración Actual del Bot:**\n` +
                          `• **Plataforma:** \`${PLATFORM}\` \n` +
-                         `• **Usuario:** \`@${STREAMER_USERNAME || 'Sin configurar'}\` \n` +
+                         `• **Usuario TikTok:** \`@${STREAMER_USERNAME || 'Sin configurar'}\` \n` +
+                         `• **Usuario Twitch:** \`@${TWITCH_STREAMER_USERNAME || 'Sin configurar'}\` \n` +
                          `• **Canal de Notificaciones:** ${CHANNEL_ID ? `<#${CHANNEL_ID}>` : '`No configurado`'} \n` +
                          `• **Rol Ping:** \`${PING_ROLE || 'Ninguno'}\` \n` +
                          `• **Frecuencia de Check:** \`Cada ${CHECK_INTERVAL_SECONDS} segundos\``
