@@ -2,13 +2,27 @@ require('dotenv').config();
 const http = require('http');
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ActivityType } = require('discord.js');
 
-// Servidor HTTP simple para cumplir con el requisito de puerto de Render Web Service
+// Servidor HTTP simple para cumplir con el requisito de puerto de Render Web Service y Keep-Alive
 const PORT = process.env.PORT || 3000;
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL || process.env.SERVER_URL || 'https://tiktoklivebot-6jcs.onrender.com';
+
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('🤖 TikTok Live Discord Bot está funcionando 24/7!');
 }).listen(PORT, () => {
     console.log(`🌐 Servidor HTTP de salud escuchando en el puerto ${PORT}`);
+    
+    // Auto Keep-Alive: Ping cada 5 minutos para evitar que Render apague la instancia por inactividad
+    if (RENDER_URL) {
+        setInterval(() => {
+            const httpModule = RENDER_URL.startsWith('https') ? require('https') : require('http');
+            httpModule.get(RENDER_URL, (res) => {
+                console.log(`📡 Keep-Alive Ping enviado a ${RENDER_URL} (Status: ${res.statusCode})`);
+            }).on('error', (err) => {
+                console.warn(`⚠️ Warning en Keep-Alive Ping: ${err.message}`);
+            });
+        }, 5 * 60 * 1000);
+    }
 });
 const { checkTikTokLive } = require('./checkers/tiktok');
 const { checkTwitchLive } = require('./checkers/twitch');
@@ -179,12 +193,18 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
+    // Responder/diferir inmediatamente a Discord para evitar "La aplicación no ha respondido"
+    try {
+        await interaction.deferReply({ ephemeral: true });
+    } catch (err) {
+        console.error('[Interaction Defer Error]', err.message);
+        return;
+    }
+
     const { commandName } = interaction;
 
     try {
         if (commandName === 'status') {
-            await interaction.deferReply({ ephemeral: true });
-            
             let streamInfo = { isLive: false };
             if (PLATFORM === 'tiktok') {
                 streamInfo = await checkTikTokLive(STREAMER_USERNAME);
@@ -202,8 +222,6 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (commandName === 'test-notify') {
-            await interaction.deferReply({ ephemeral: true });
-
             if (!CHANNEL_ID) {
                 return interaction.editReply({ content: '❌ El `NOTIFICATION_CHANNEL_ID` no está configurado en el archivo .env' });
             }
@@ -231,7 +249,6 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (commandName === 'config-bot') {
-            await interaction.deferReply({ ephemeral: true });
             return interaction.editReply({
                 content: `⚙️ **Configuración Actual del Bot:**\n` +
                          `• **Plataforma:** \`${PLATFORM}\` \n` +
@@ -243,12 +260,7 @@ client.on('interactionCreate', async interaction => {
         }
     } catch (err) {
         console.error(`[Interaction Error - /${commandName}]`, err);
-        const errorMessage = `❌ Error al ejecutar el comando: ${err.message}`;
-        if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({ content: errorMessage }).catch(() => {});
-        } else {
-            await interaction.reply({ content: errorMessage, ephemeral: true }).catch(() => {});
-        }
+        await interaction.editReply({ content: `❌ Error al ejecutar el comando: ${err.message}` }).catch(() => {});
     }
 });
 
