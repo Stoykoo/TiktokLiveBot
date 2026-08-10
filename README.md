@@ -1,89 +1,89 @@
-# 🔴 TikTok Live & Stream Notification Discord Bot
+# 🔴 TikTok & Twitch Live Notification Discord Bot 24/7
 
-Este bot monitorea automáticamente tu canal de **TikTok** (o Twitch) y envía una notificación atractiva a tu servidor de Discord cada vez que inicies un directo.
+Este bot monitorea automáticamente tu canal de **TikTok** y **Twitch** en simultáneo y envía una notificación atractiva a tu servidor de Discord cada vez que inicies un directo.
+
+---
+
+## ✨ Características Principal
+
+- 📡 **Monitoreo Simultáneo (Dual Platform):** Revisa TikTok y Twitch al mismo tiempo.
+- ⚡ **Cero Configuración Compleja en Twitch:** Funciona out-of-the-box sin necesidad de API keys de desarrollador.
+- 👥 **Nombres de Usuario Independientes:** Soporta usuarios diferentes en TikTok (`STREAMER_USERNAME`) y Twitch (`TWITCH_STREAMER_USERNAME`).
+- 🤖 **24/7 en Render:** Incluye servidor HTTP de salud con **Auto Keep-Alive** interno para evitar que el plan gratuito de Render apague el bot.
+- 🎨 **Diseño Premium:** Tarjetas embed avanzadas con contadores de espectadores, miniatura, avatar y botones de enlace directo.
+- 🔔 **Menciones Configurables:** `@everyone`, `@here` o menciones de roles específicos por ID.
+- 💬 **Comandos Slash:** `/status`, `/test-notify`, `/config-bot`.
 
 ---
 
 ## 🛠️ Requisitos Previos
 
-- Node.js instalado (v18+).
-- Una cuenta en Discord y permisos para invitar un Bot a tu servidor.
+- Node.js (v18+).
+- Cuenta en Discord y permisos de Administrador en el servidor.
+- Un servicio de Hosting (ej. [Render](https://render.com)).
 
 ---
 
 ## 🚀 Guía de Configuración Paso a Paso
 
-### Paso 1: Crear el Bot en Discord
+### 1. Crear el Bot en Discord
 
-1. Ve al Portal de Desarrolladores de Discord: [https://discord.com/developers/applications](https://discord.com/developers/applications)
-2. Haz clic en **New Application**, dale un nombre a tu aplicación (ej: `DirectosBot`) y acepta los términos.
-3. En el menú de la izquierda, ve a **Bot**.
-4. Haz clic en **Reset Token** para generar y copiar el **Token de tu Bot**. *(🔒 Guardalo muy bien y no lo compartas con nadie)*.
-5. *(Opcional)* Desmarca **Public Bot** si solo quieres que tú puedas añadirlo a servidores.
-
----
-
-### Paso 2: Invitar el Bot a tu Servidor de Discord
-
-1. En el portal de desarrolladores, ve a **OAuth2** -> **URL Generator** en el menú de la izquierda.
-2. En **SCOPES**, selecciona `bot` y `applications.commands`.
-3. En **BOT PERMISSIONS**, marca las siguientes casillas:
-   - **Send Messages** (Enviar mensajes)
-   - **Embed Links** (Insertar enlaces)
-   - **Attach Files** (Adjuntar archivos)
-   - **Mention Everyone** (Mencionar a todos - si vas a usar @everyone)
-   - **Read Message History** (Leer historial de mensajes)
-4. Copia la **Generated URL** que aparece abajo, pégala en tu navegador e invita al bot a tu servidor de Discord.
+1. Entra a [Discord Developer Portal](https://discord.com/developers/applications).
+2. Haz clic en **New Application**, asígnale un nombre (ej: `DirectosBot`).
+3. Ve a **Bot** -> Haz clic en **Reset Token** y copia el **Token de tu Bot**.
+4. Ve a **OAuth2** -> **URL Generator**:
+   - Marca **Scopes**: `bot`, `applications.commands`.
+   - Marca **Bot Permissions**: `Send Messages`, `Embed Links`, `Mention Everyone`, `Read Message History`.
+5. Copia la URL generada, ábrela en tu navegador e invita al bot a tu servidor.
 
 ---
 
-### Paso 3: Obtener el ID del Canal de Discord
-
-1. En tu aplicación de Discord, ve a **Ajustes de Usuario** -> **Avanzado** -> activa el **Modo Desarrollador**.
-2. Ve al canal donde quieres que el bot publique los avisos (ej: `#anuncios-directos`).
-3. Haz clic derecho sobre el nombre del canal y selecciona **Copiar ID del canal**.
-
----
-
-### Paso 4: Configurar el archivo `.env`
-
-Abre el archivo `.env` ubicado en la carpeta del proyecto `c:\Users\Administrator\Proyectos\TiktokLiveBot\.env` y completa los datos:
+## ⚙️ Variables de Entorno (`.env`)
 
 ```env
-DISCORD_TOKEN=TU_TOKEN_DE_DISCORD_AQUI
-NOTIFICATION_CHANNEL_ID=123456789012345678
-STREAM_PLATFORM=tiktok
-STREAMER_USERNAME=tu_usuario_de_tiktok
+# Token del Bot de Discord
+DISCORD_TOKEN=MTUzNTg1MzEy...
+
+# ID del Canal de Notificaciones
+NOTIFICATION_CHANNEL_ID=1535850158275952670
+
+# Modo de Plataforma: 'tiktok', 'twitch' o 'both' (ambas)
+STREAM_PLATFORM=both
+
+# Nombre de usuario en TikTok (sin @)
+STREAMER_USERNAME=stoykxs
+
+# Nombre de usuario en Twitch (sin @)
+TWITCH_STREAMER_USERNAME=stoykoooooooo
+
+# Rol a mencionar: 'everyone', 'here', o ID de rol
 PING_ROLE=everyone
+
+# Frecuencia de escaneo en segundos
 CHECK_INTERVAL_SECONDS=60
+
+# URL de tu app en Render (para Keep-Alive automático)
+RENDER_EXTERNAL_URL=https://tu-app-en-render.onrender.com
 ```
 
 ---
 
-## ▶️ Cómo Ejecutar el Bot
+## ☁️ Despliegue 24/7 en Render
 
-Para iniciar el bot en producción:
-```bash
-npm start
-```
-
-Para iniciar en modo desarrollo (se reinicia automáticamente si haces cambios):
-```bash
-npm run dev
-```
+1. Subes este código a tu repositorio de **GitHub**.
+2. Entras a **[Render.com](https://render.com)** -> **New Web Service**.
+3. Conectas tu repositorio de GitHub.
+4. Configuras:
+   - **Environment:** `Node`
+   - **Build Command:** `npm install`
+   - **Start Command:** `node src/index.js`
+5. En la sección **Environment Variables**, agregas las variables de tu `.env`.
+6. ¡Listo! Render desplegará el bot y se mantendrá activo 24/7.
 
 ---
 
-## 💬 Comandos Slash Disponibles
+## 💬 Comandos Slash
 
-- `/status` -> Comprueba en tiempo real si el creador está en directo.
-- `/test-notify` -> Envía un mensaje de aviso de prueba al canal configurado para verificar que los permisos y la apariencia estén bien.
+- `/status` -> Muestra el estado actual del directo en TikTok y Twitch.
+- `/test-notify` -> Envía un mensaje de aviso de prueba al canal configurado.
 - `/config-bot` -> Muestra la configuración activa del bot.
-
----
-
-## 🎨 Características Destacadas
-
-- **Diseño Premium:** Tarjetas embed con botones interactivos que dirigen directamente a tu directo.
-- **Sin Notificaciones Repetidas:** El bot recuerda si ya envió la notificación y no volverá a notificar hasta que abras un nuevo directo.
-- **Estado Dinámico:** El bot actualizará su actividad a `🔴 Directo de @tu_usuario` cuando estés transmitiendo.
