@@ -25,7 +25,7 @@ function createLiveEmbed({ platform, username, title, roomLink, viewerCount, cov
             { name: '🌐 Plataforma', value: platformName, inline: true }
         )
         .setTimestamp()
-        .setFooter({ text: 'Notificaciones de Directos • Antigravity Live Bot' });
+        .setFooter({ text: 'Notificaciones de Directos' });
 
     if (viewerCount && viewerCount > 0) {
         embed.addFields({ name: '👥 Espectadores', value: `${viewerCount}`, inline: true });
