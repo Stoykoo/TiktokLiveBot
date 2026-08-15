@@ -28,8 +28,11 @@ async function checkTwitchLive(username, clientId, clientSecret) {
     const cleanUser = (username || '').trim().toLowerCase().replace(/^@/, '');
     if (!cleanUser) return { isLive: false };
 
+    let isApiAttempted = false;
+
     // 1. Usar API Helix si se definieron Client ID y Client Secret
     if (clientId && clientSecret) {
+        isApiAttempted = true;
         try {
             const token = await getTwitchAppToken(clientId, clientSecret);
             if (token) {
@@ -58,6 +61,7 @@ async function checkTwitchLive(username, clientId, clientSecret) {
             }
         } catch (err) {
             console.error(`[Twitch Helix Checker Error] No se pudo verificar @${cleanUser}:`, err.message);
+            return { isLive: false, error: true };
         }
     }
 
@@ -92,6 +96,7 @@ async function checkTwitchLive(username, clientId, clientSecret) {
         }
     } catch (err) {
         console.error(`[Twitch Decapi Fallback Error] No se pudo verificar @${cleanUser}:`, err.message);
+        return { isLive: false, error: true };
     }
 
     return { isLive: false };

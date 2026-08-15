@@ -2,25 +2,29 @@ const axios = require('axios');
 
 /**
  * Revisa el estado del directo de TikTok para un usuario específico.
+ * Retorna status estricto. NUNCA retorna isLive: true salvo que status === 2.
  * @param {string} username - Nombre de usuario de TikTok (sin @)
- * @returns {Promise<{isLive: boolean, title?: string, viewerCount?: number, roomLink?: string, avatarUrl?: string, coverUrl?: string}>}
+ * @returns {Promise<{isLive: boolean, title?: string, viewerCount?: number, roomLink?: string, avatarUrl?: string, coverUrl?: string, error?: boolean}>}
  */
 async function checkTikTokLive(username) {
-    const cleanUser = username.replace(/^@/, '');
+    const cleanUser = username.replace(/^@/, '').trim();
+    if (!cleanUser) return { isLive: false };
+
     const liveUrl = `https://www.tiktok.com/@${cleanUser}/live`;
 
     const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Cache-Control': 'no-cache'
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
     };
 
     try {
         const response = await axios.get(liveUrl, { headers, timeout: 12000 });
         const html = response.data;
 
-        // 1. Intentar extraer datos de SIGI_STATE (Formato habitual en /live)
+        // 1. Intentar extraer datos de SIGI_STATE
         const sigiMatch = html.match(/<script id="SIGI_STATE"[^>]*>([\s\S]*?)<\/script>/i);
         if (sigiMatch && sigiMatch[1]) {
             try {
@@ -29,28 +33,29 @@ async function checkTikTokLive(username) {
                 const user = liveRoomUserInfo?.user || sigi.CurrentRoom?.user;
                 const liveRoom = liveRoomUserInfo?.liveRoom || sigi.CurrentRoom;
 
-                const roomId = user?.roomId || sigi.CurrentRoom?.roomId || liveRoom?.id || liveRoom?.roomId;
-                const userStatus = user?.status;
-                const roomStatus = liveRoom?.status;
+                const userStatus = Number(user?.status);
+                const roomStatus = Number(liveRoom?.status);
 
-                // En TikTok, status = 2 indica transmisión EN VIVO activa.
-                const isLive = Boolean(roomId && roomId !== '0' && roomId !== '' && (userStatus === 2 || roomStatus === 2));
+                // En TikTok, status === 2 indica transmisión EN VIVO activa en tiempo real.
+                const isLive = Boolean(userStatus === 2 || roomStatus === 2);
 
-                const title = liveRoom?.title || sigi.CurrentRoom?.title || `¡Directo de @${cleanUser} en TikTok!`;
-                const viewerCount = liveRoom?.user_count || sigi.CurrentRoom?.user_count || 0;
-                const avatarUrl = user?.avatarLarger || user?.avatarMedium || user?.avatarThumb;
-                const coverUrl = liveRoom?.coverUrl || liveRoom?.cover?.url_list?.[0] || avatarUrl;
+                if (isLive) {
+                    const title = liveRoom?.title || sigi.CurrentRoom?.title || `¡Directo de @${cleanUser} en TikTok!`;
+                    const viewerCount = Number(liveRoom?.user_count || sigi.CurrentRoom?.user_count || 0);
+                    const avatarUrl = user?.avatarLarger || user?.avatarMedium || user?.avatarThumb;
+                    const coverUrl = liveRoom?.coverUrl || liveRoom?.cover?.url_list?.[0] || avatarUrl;
 
-                return {
-                    isLive,
-                    title,
-                    viewerCount,
-                    roomLink: liveUrl,
-                    avatarUrl,
-                    coverUrl
-                };
+                    return {
+                        isLive: true,
+                        title,
+                        viewerCount,
+                        roomLink: liveUrl,
+                        avatarUrl,
+                        coverUrl
+                    };
+                }
             } catch (err) {
-                // Ignore parse error and continue to next method
+                // Parse error ignored
             }
         }
 
@@ -66,31 +71,33 @@ async function checkTikTokLive(username) {
                 const user = liveDetail?.user || userDetail?.user;
                 const liveRoom = liveDetail?.liveRoom;
 
-                const roomId = user?.roomId;
-                const userStatus = user?.status;
-                const roomStatus = liveRoom?.status;
+                const userStatus = Number(user?.status);
+                const roomStatus = Number(liveRoom?.status);
 
-                const isLive = Boolean(roomId && roomId !== '0' && roomId !== '' && (userStatus === 2 || roomStatus === 2));
+                // ESTRICTO: Solo es EN VIVO si status === 2
+                const isLive = Boolean(userStatus === 2 || roomStatus === 2);
 
-                const title = liveRoom?.title || `¡Directo de @${cleanUser} en TikTok!`;
-                const viewerCount = liveRoom?.user_count || 0;
-                const avatarUrl = user?.avatarLarger || user?.avatarThumb;
-                const coverUrl = liveRoom?.coverUrl || avatarUrl;
+                if (isLive) {
+                    const title = liveRoom?.title || `¡Directo de @${cleanUser} en TikTok!`;
+                    const viewerCount = Number(liveRoom?.user_count || 0);
+                    const avatarUrl = user?.avatarLarger || user?.avatarThumb;
+                    const coverUrl = liveRoom?.coverUrl || avatarUrl;
 
-                return {
-                    isLive,
-                    title,
-                    viewerCount,
-                    roomLink: liveUrl,
-                    avatarUrl,
-                    coverUrl
-                };
+                    return {
+                        isLive: true,
+                        title,
+                        viewerCount,
+                        roomLink: liveUrl,
+                        avatarUrl,
+                        coverUrl
+                    };
+                }
             } catch (err) {
-                // Ignore parse error
+                // Parse error ignored
             }
         }
 
-        // 3. Fallback a la página de perfil del usuario si no se obtuvo info en /live
+        // 3. Fallback a la página de perfil con verificación estricta de status === 2
         try {
             const profileUrl = `https://www.tiktok.com/@${cleanUser}`;
             const profileRes = await axios.get(profileUrl, { headers, timeout: 10000 });
@@ -100,15 +107,22 @@ async function checkTikTokLive(username) {
             if (profUniMatch && profUniMatch[1]) {
                 const profData = JSON.parse(profUniMatch[1]);
                 const user = profData.__DEFAULT_SCOPE__?.['webapp.user-detail']?.userInfo?.user;
-                if (user) {
-                    const isLive = Boolean(user.roomId && user.roomId !== '' && user.roomId !== '0');
+                const liveRoom = profData.__DEFAULT_SCOPE__?.['webapp.user-detail']?.userInfo?.liveRoom;
+
+                const userStatus = Number(user?.status);
+                const roomStatus = Number(liveRoom?.status);
+
+                // ESTRICTO: NUNCA usar solo user.roomId (dado que roomId existe incluso offline)
+                const isLive = Boolean(userStatus === 2 || roomStatus === 2);
+
+                if (isLive) {
                     return {
-                        isLive,
-                        title: `¡Directo de @${cleanUser} en TikTok!`,
-                        viewerCount: 0,
+                        isLive: true,
+                        title: liveRoom?.title || `¡Directo de @${cleanUser} en TikTok!`,
+                        viewerCount: Number(liveRoom?.user_count || 0),
                         roomLink: liveUrl,
-                        avatarUrl: user.avatarLarger || user.avatarThumb,
-                        coverUrl: user.avatarLarger || user.avatarThumb
+                        avatarUrl: user?.avatarLarger || user?.avatarThumb,
+                        coverUrl: liveRoom?.coverUrl || user?.avatarLarger || user?.avatarThumb
                     };
                 }
             }
@@ -120,9 +134,8 @@ async function checkTikTokLive(username) {
 
     } catch (error) {
         console.error(`[TikTok Checker Error] No se pudo verificar @${cleanUser}:`, error.message);
-        return { isLive: false };
+        return { isLive: false, error: true };
     }
 }
 
 module.exports = { checkTikTokLive };
-

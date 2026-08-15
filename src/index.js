@@ -1,6 +1,10 @@
 require('dotenv').config();
 const http = require('http');
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ActivityType } = require('discord.js');
+const { checkTikTokLive } = require('./checkers/tiktok');
+const { checkTwitchLive } = require('./checkers/twitch');
+const { createLiveEmbed } = require('./embeds/liveEmbed');
+const { loadState, saveState } = require('./stateStore');
 
 // Servidor HTTP simple para cumplir con el requisito de puerto de Render Web Service y Keep-Alive
 const PORT = process.env.PORT || 3000;
@@ -24,9 +28,6 @@ http.createServer((req, res) => {
         }, 5 * 60 * 1000);
     }
 });
-const { checkTikTokLive } = require('./checkers/tiktok');
-const { checkTwitchLive } = require('./checkers/twitch');
-const { createLiveEmbed } = require('./embeds/liveEmbed');
 
 // Configuración desde .env
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
@@ -39,6 +40,10 @@ const CHECK_INTERVAL_SECONDS = parseInt(process.env.CHECK_INTERVAL_SECONDS || '6
 const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID || '';
 const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET || '';
 
+// Parámetros de protección contra spam y flapping
+const OFFLINE_THRESHOLD = 3; // Requiere 3 revisiones offline seguidas antes de marcar finalizado
+const NOTIFY_COOLDOWN_MS = 15 * 60 * 1000; // Cooldown mínimo de 15 minutos entre avisos
+
 if (!DISCORD_TOKEN) {
     console.error('❌ ERROR CRÍTICO: No se ha configurado DISCORD_TOKEN en el archivo .env');
     console.error('Por favor edita el archivo .env e ingresa tu Bot Token.');
@@ -49,9 +54,8 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds]
 });
 
-// Estado en memoria para evitar notificaciones duplicadas por plataforma
-let wasLiveTikTok = false;
-let wasLiveTwitch = false;
+// Estado persistente en disco/memoria para evitar pings repetidos por reinicios de servidor o flapping
+let appState = loadState();
 
 // Registro de comandos Slash
 const commands = [
@@ -92,33 +96,54 @@ async function checkStreamStatus() {
 
     const checkTikTok = Boolean(STREAMER_USERNAME) && PLATFORM !== 'twitch';
     const checkTwitch = Boolean(TWITCH_STREAMER_USERNAME) && PLATFORM !== 'tiktok';
+    const now = Date.now();
 
     // 1. Revisar TikTok
     if (checkTikTok) {
         try {
             const tiktokInfo = await checkTikTokLive(STREAMER_USERNAME);
-            if (tiktokInfo.isLive && !wasLiveTikTok) {
-                console.log(`🎉 ¡DIRECTO EN TIKTOK DETECTADO! Enviando alerta para @${STREAMER_USERNAME}...`);
-                const payload = createLiveEmbed({
-                    platform: 'tiktok',
-                    username: STREAMER_USERNAME,
-                    title: tiktokInfo.title,
-                    roomLink: tiktokInfo.roomLink,
-                    viewerCount: tiktokInfo.viewerCount,
-                    coverUrl: tiktokInfo.coverUrl,
-                    avatarUrl: tiktokInfo.avatarUrl,
-                    pingRole: PING_ROLE
-                });
-                await channel.send(payload);
-                wasLiveTikTok = true;
+            appState.tiktok.lastCheckAt = now;
 
-                client.user.setPresence({
-                    activities: [{ name: `🔴 TikTok Live @${STREAMER_USERNAME}`, type: ActivityType.Streaming, url: tiktokInfo.roomLink }],
-                    status: 'online'
-                });
-            } else if (!tiktokInfo.isLive && wasLiveTikTok) {
-                console.log(`ℹ️ El directo de TikTok de @${STREAMER_USERNAME} ha finalizado.`);
-                wasLiveTikTok = false;
+            if (tiktokInfo.isLive) {
+                appState.tiktok.consecutiveOfflineCount = 0;
+                const timeSinceLastNotify = now - (appState.tiktok.lastNotifiedAt || 0);
+
+                if (!appState.tiktok.isLive) {
+                    if (timeSinceLastNotify >= NOTIFY_COOLDOWN_MS) {
+                        console.log(`🎉 ¡DIRECTO EN TIKTOK DETECTADO! Enviando alerta para @${STREAMER_USERNAME}...`);
+                        const payload = createLiveEmbed({
+                            platform: 'tiktok',
+                            username: STREAMER_USERNAME,
+                            title: tiktokInfo.title,
+                            roomLink: tiktokInfo.roomLink,
+                            viewerCount: tiktokInfo.viewerCount,
+                            coverUrl: tiktokInfo.coverUrl,
+                            avatarUrl: tiktokInfo.avatarUrl,
+                            pingRole: PING_ROLE
+                        });
+                        await channel.send(payload);
+                        appState.tiktok.lastNotifiedAt = now;
+                        appState.tiktok.isLive = true;
+                        saveState(appState);
+                    } else {
+                        console.log(`⏳ Directo en TikTok detectado para @${STREAMER_USERNAME}, pero omitido aviso por Cooldown (${Math.round(timeSinceLastNotify / 60000)}m desde el último).`);
+                        appState.tiktok.isLive = true;
+                        saveState(appState);
+                    }
+                }
+            } else if (!tiktokInfo.error) {
+                if (appState.tiktok.isLive) {
+                    appState.tiktok.consecutiveOfflineCount = (appState.tiktok.consecutiveOfflineCount || 0) + 1;
+                    console.log(`ℹ️ TikTok check reportó offline. Consecutivos: ${appState.tiktok.consecutiveOfflineCount}/${OFFLINE_THRESHOLD}`);
+                    if (appState.tiktok.consecutiveOfflineCount >= OFFLINE_THRESHOLD) {
+                        console.log(`ℹ️ El directo de TikTok de @${STREAMER_USERNAME} ha finalizado.`);
+                        appState.tiktok.isLive = false;
+                        appState.tiktok.consecutiveOfflineCount = 0;
+                        saveState(appState);
+                    }
+                }
+            } else {
+                console.warn(`⚠️ Omitiendo cambio de estado de TikTok por error puntual de conexión.`);
             }
         } catch (err) {
             console.error('[TikTok Check Error]', err.message);
@@ -129,36 +154,66 @@ async function checkStreamStatus() {
     if (checkTwitch) {
         try {
             const twitchInfo = await checkTwitchLive(TWITCH_STREAMER_USERNAME, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
-            if (twitchInfo.isLive && !wasLiveTwitch) {
-                console.log(`🎉 ¡DIRECTO EN TWITCH DETECTADO! Enviando alerta para ${TWITCH_STREAMER_USERNAME}...`);
-                const payload = createLiveEmbed({
-                    platform: 'twitch',
-                    username: TWITCH_STREAMER_USERNAME,
-                    title: twitchInfo.title,
-                    roomLink: twitchInfo.roomLink,
-                    viewerCount: twitchInfo.viewerCount,
-                    coverUrl: twitchInfo.coverUrl,
-                    avatarUrl: twitchInfo.avatarUrl,
-                    pingRole: PING_ROLE
-                });
-                await channel.send(payload);
-                wasLiveTwitch = true;
+            appState.twitch.lastCheckAt = now;
 
-                client.user.setPresence({
-                    activities: [{ name: `🔴 Twitch Live @${TWITCH_STREAMER_USERNAME}`, type: ActivityType.Streaming, url: twitchInfo.roomLink }],
-                    status: 'online'
-                });
-            } else if (!twitchInfo.isLive && wasLiveTwitch) {
-                console.log(`ℹ️ El directo de Twitch de @${TWITCH_STREAMER_USERNAME} ha finalizado.`);
-                wasLiveTwitch = false;
+            if (twitchInfo.isLive) {
+                appState.twitch.consecutiveOfflineCount = 0;
+                const timeSinceLastNotify = now - (appState.twitch.lastNotifiedAt || 0);
+
+                if (!appState.twitch.isLive) {
+                    if (timeSinceLastNotify >= NOTIFY_COOLDOWN_MS) {
+                        console.log(`🎉 ¡DIRECTO EN TWITCH DETECTADO! Enviando alerta para ${TWITCH_STREAMER_USERNAME}...`);
+                        const payload = createLiveEmbed({
+                            platform: 'twitch',
+                            username: TWITCH_STREAMER_USERNAME,
+                            title: twitchInfo.title,
+                            roomLink: twitchInfo.roomLink,
+                            viewerCount: twitchInfo.viewerCount,
+                            coverUrl: twitchInfo.coverUrl,
+                            avatarUrl: twitchInfo.avatarUrl,
+                            pingRole: PING_ROLE
+                        });
+                        await channel.send(payload);
+                        appState.twitch.lastNotifiedAt = now;
+                        appState.twitch.isLive = true;
+                        saveState(appState);
+                    } else {
+                        console.log(`⏳ Directo en Twitch detectado para @${TWITCH_STREAMER_USERNAME}, pero omitido por Cooldown.`);
+                        appState.twitch.isLive = true;
+                        saveState(appState);
+                    }
+                }
+            } else if (!twitchInfo.error) {
+                if (appState.twitch.isLive) {
+                    appState.twitch.consecutiveOfflineCount = (appState.twitch.consecutiveOfflineCount || 0) + 1;
+                    console.log(`ℹ️ Twitch check reportó offline. Consecutivos: ${appState.twitch.consecutiveOfflineCount}/${OFFLINE_THRESHOLD}`);
+                    if (appState.twitch.consecutiveOfflineCount >= OFFLINE_THRESHOLD) {
+                        console.log(`ℹ️ El directo de Twitch de @${TWITCH_STREAMER_USERNAME} ha finalizado.`);
+                        appState.twitch.isLive = false;
+                        appState.twitch.consecutiveOfflineCount = 0;
+                        saveState(appState);
+                    }
+                }
+            } else {
+                console.warn(`⚠️ Omitiendo cambio de estado de Twitch por error puntual de conexión.`);
             }
         } catch (err) {
             console.error('[Twitch Check Error]', err.message);
         }
     }
 
-    // Si ninguno está en directo, mantener estado normal
-    if (!wasLiveTikTok && !wasLiveTwitch) {
+    // Actualizar presencia de Discord según el estado persistente
+    if (appState.tiktok.isLive) {
+        client.user.setPresence({
+            activities: [{ name: `🔴 TikTok Live @${STREAMER_USERNAME}`, type: ActivityType.Streaming, url: `https://www.tiktok.com/@${STREAMER_USERNAME}/live` }],
+            status: 'online'
+        });
+    } else if (appState.twitch.isLive) {
+        client.user.setPresence({
+            activities: [{ name: `🔴 Twitch Live @${TWITCH_STREAMER_USERNAME}`, type: ActivityType.Streaming, url: `https://twitch.tv/${TWITCH_STREAMER_USERNAME}` }],
+            status: 'online'
+        });
+    } else {
         client.user.setPresence({
             activities: [{ name: `👀 Monitoreando @${STREAMER_USERNAME || TWITCH_STREAMER_USERNAME}`, type: ActivityType.Watching }],
             status: 'online'
@@ -196,7 +251,6 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    // Responder/diferir inmediatamente a Discord para evitar "La aplicación no ha respondido"
     try {
         await interaction.deferReply({ ephemeral: true });
     } catch (err) {
