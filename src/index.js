@@ -1,6 +1,6 @@
 require('dotenv').config();
 const http = require('http');
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ActivityType, MessageFlags } = require('discord.js');
 const { checkTikTokLive } = require('./checkers/tiktok');
 const { checkTwitchLive } = require('./checkers/twitch');
 const { createLiveEmbed } = require('./embeds/liveEmbed');
@@ -252,7 +252,7 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     try {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     } catch (err) {
         console.error('[Interaction Defer Error]', err.message);
         return;
