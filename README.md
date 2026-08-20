@@ -1,105 +1,93 @@
-# 🔴 TikTok & Twitch Live Notification Discord Bot 24/7
+# Bot de directos para Discord
 
-Este bot monitorea automáticamente tu canal de **TikTok** y **Twitch** en simultáneo y envía una notificación atractiva a tu servidor de Discord cada vez que inicies un directo.
+Monitorea una cuenta de TikTok y/o Twitch y publica como máximo un aviso por sesión de directo. Está diseñado para fallar de forma segura: una respuesta ambigua, un timeout o un reinicio no se convierten en un ping.
 
----
+## Qué evita el spam
 
-## ✨ Características Principales
+- Dos detecciones `live` consecutivas de la misma sesión antes de avisar.
+- Estados separados `live`, `offline` y `unknown`; los errores nunca cuentan como offline.
+- Deduplicación por `roomId` de TikTok o `stream.id` de Twitch.
+- Ciclo serial: nunca hay dos comprobaciones ejecutándose al mismo tiempo.
+- Estado guardado antes de enviar a Discord y nonce determinista en el mensaje.
+- Arranque seguro: sin estado previo, un directo que ya estaba activo se adopta sin avisar otra vez.
+- `/test-notify` requiere `Administrar servidor`, no menciona roles y tiene cooldown.
 
-- 📡 **Monitoreo Simultáneo (Dual Platform):** Revisa TikTok y Twitch al mismo tiempo.
-- ⚡ **Cero Configuración Compleja en Twitch:** Funciona out-of-the-box sin necesidad de API keys de desarrollador.
-- 👥 **Nombres de Usuario Independientes:** Soporta usuarios diferentes en TikTok (`STREAMER_USERNAME`) y Twitch (`TWITCH_STREAMER_USERNAME`).
-- 🐳 **Soporte Completo para Docker:** Incluye `Dockerfile` y `docker-compose.yml` preconfigurados para despliegues portables y aislados.
-- 🤖 **24/7 en Render / VPS:** Incluye servidor HTTP de salud con **Auto Keep-Alive** interno para evitar que el plan gratuito de Render apague el bot.
-- 🎨 **Diseño Premium:** Tarjetas embed avanzadas con contadores de espectadores, miniatura, avatar y botones de enlace directo.
-- 🔔 **Menciones Configurables:** `@everyone`, `@here` o menciones de roles específicos por ID.
-- 💬 **Comandos Slash:** `/status`, `/test-notify`, `/config-bot`.
+TikTok no publica una API oficial de estado de directos. El checker usa de forma conservadora los datos de sala de la página `/live`; si TikTok cambia el HTML, responde `unknown` y no envía nada. Twitch usa exclusivamente la API oficial Helix.
 
----
+## Requisitos
 
-## 🛠️ Requisitos Previos
+- Node.js 20 o superior, o Docker.
+- Un bot de Discord con permisos para ver el canal, enviar mensajes y adjuntar enlaces. Si `PING_ROLE` no está vacío, el rol debe ser mencionable o el bot necesita **Mencionar @everyone, @here y todos los roles**.
+- Para Twitch: una aplicación en [Twitch Developers](https://dev.twitch.tv/console/apps) y sus credenciales Helix.
 
-- Node.js (v18+) o **Docker**.
-- Cuenta en Discord y permisos de Administrador en el servidor.
-- Un servicio de Hosting (ej. [Render](https://render.com), Railway, VPS).
+## Configuración
 
----
+```powershell
+Copy-Item .env.example .env
+npm ci
+npm test
+npm start
+```
 
-## ⚙️ Variables de Entorno (`.env`)
+Variables principales:
 
 ```env
-# Token del Bot de Discord
-DISCORD_TOKEN=MTUzNTg1MzEy...
-
-# ID del Canal de Notificaciones
-NOTIFICATION_CHANNEL_ID=1535850158275952670
-
-# Modo de Plataforma: 'tiktok', 'twitch' o 'both' (ambas)
-STREAM_PLATFORM=both
-
-# Nombre de usuario en TikTok (sin @)
-STREAMER_USERNAME=stoykxs
-
-# Nombre de usuario en Twitch (sin @)
-TWITCH_STREAMER_USERNAME=stoykoooooooo
-
-# Rol a mencionar: 'everyone', 'here', o ID de rol
-PING_ROLE=everyone
-
-# Frecuencia de escaneo en segundos
+DISCORD_TOKEN=tu_token
+NOTIFICATION_CHANNEL_ID=123456789012345678
+STREAM_PLATFORM=tiktok
+STREAMER_USERNAME=tu_usuario_tiktok
+TWITCH_STREAMER_USERNAME=tu_usuario_twitch
+PING_ROLE=
 CHECK_INTERVAL_SECONDS=60
-
-# URL de tu app en Render (para Keep-Alive automático)
-RENDER_EXTERNAL_URL=https://tu-app-en-render.onrender.com
+LIVE_CONFIRMATIONS=2
+OFFLINE_THRESHOLD=10
+NOTIFY_COOLDOWN_MINUTES=120
+NOTIFY_ON_STARTUP=false
+TWITCH_CLIENT_ID=
+TWITCH_CLIENT_SECRET=
 ```
 
----
+`STREAM_PLATFORM` acepta `tiktok`, `twitch` o `both`. En modo `both`, TikTok seguirá funcionando aunque falten las credenciales de Twitch; el bot lo indicará en los logs. Mantén `NOTIFY_ON_STARTUP=false` si lo más importante es impedir avisos repetidos después de reinicios.
 
-## 🐳 Ejecución con Docker (Recomendado)
+El cooldown es deliberadamente conservador: si empieza otra sesión dentro de `NOTIFY_COOLDOWN_MINUTES`, esa sesión completa se omite; no se manda un aviso tardío cuando vence el tiempo.
 
-### Opción A: Usando Docker Compose
-```bash
-# Iniciar el bot en segundo plano
-docker compose up -d
+Comandos:
 
-# Ver los logs en tiempo real
+- `/status`: muestra el último estado confirmado sin volver a consultar al proveedor.
+- `/test-notify`: prueba el canal sin hacer ping; solo administradores y una vez cada cinco minutos por defecto.
+- `/config-bot`: muestra la configuración no secreta; solo administradores.
+
+## Docker
+
+```powershell
+docker compose up -d --build
 docker compose logs -f
-
-# Detener el bot
-docker compose down
 ```
 
-### Opción B: Usando Docker CLI
-```bash
-# Construir la imagen
-docker build -t tiktok-live-bot .
+Compose monta `./data` y guarda el estado en `/app/data/state.json`. `state.json` y `.env` se excluyen de la imagen para no hornear estado viejo ni secretos.
 
-# Ejecutar el contenedor
-docker run -d --name tiktok_bot --env-file .env -p 3000:3000 tiktok-live-bot
+## Render
+
+Para un bot conectado a Discord de forma continua usa una instancia de pago o un host que no duerma. Los Web Services gratuitos de Render se suspenden tras 15 minutos sin tráfico entrante y pierden los cambios del filesystem al reiniciar; un proceso suspendido no puede despertarse a sí mismo. Consulta las [limitaciones del plan gratuito](https://render.com/docs/free).
+
+1. Crea un **Web Service** desde el repositorio y selecciona el `Dockerfile`.
+2. Añade las variables de `.env` en **Environment**; no subas el archivo `.env`.
+3. Configura `/healthz` como health check de Render. Usa `/readyz` solo para diagnóstico; un proveedor temporalmente caído no debe provocar un ciclo de reinicios. Consulta el comportamiento de los [health checks de Render](https://render.com/docs/health-checks).
+4. Para conservar deduplicación entre despliegues, añade un [Persistent Disk](https://render.com/docs/disks) montado en `/var/data` y define `STATE_FILE=/var/data/state.json`.
+5. Usa una sola instancia del servicio. Dos instancias sin almacenamiento coordinado pueden publicar por separado.
+
+Sin disco persistente el arranque seguro sigue evitando reavisar un directo que ya estaba activo, pero puede omitir ese aviso inicial. El siguiente directo, después de observar offline, se notificará normalmente.
+
+## Pruebas y salud
+
+```powershell
+npm test
+npm audit --omit=dev
 ```
 
----
+- `/healthz` comprueba que el proceso responde.
+- `/readyz` devuelve `200` solo cuando Discord está conectado, el estado se puede guardar, el último envío no falló y cada plataforma activa tiene una comprobación válida reciente.
 
-## ☁️ Despliegue 24/7 en Render
+## Licencia
 
-1. Subes este código a tu repositorio de **GitHub**.
-2. Entras a **[Render.com](https://render.com)** -> **New Web Service**.
-3. Conectas tu repositorio de GitHub.
-4. Render detectará automáticamente el `Dockerfile` (o puedes elegir `Node`).
-5. En la sección **Environment Variables**, agregas las variables de tu `.env`.
-6. ¡Listo! Render desplegará el bot usando Docker y se mantendrá activo 24/7.
-
----
-
-## 💬 Comandos Slash
-
-- `/status` -> Muestra el estado actual del directo en TikTok y Twitch.
-- `/test-notify` -> Envía un mensaje de aviso de prueba al canal configurado.
-- `/config-bot` -> Muestra la configuración activa del bot.
-
----
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia **MIT**. Consulta el archivo [LICENSE](LICENSE) para obtener más detalles.
-
+MIT

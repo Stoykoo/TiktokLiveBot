@@ -1,11 +1,18 @@
-version: '3.8'
-
 services:
   discord-bot:
     build: .
     container_name: tiktok_live_bot
-    restart: always
+    restart: unless-stopped
+    stop_grace_period: 30s
     env_file:
       - .env
+    environment:
+      STATE_FILE: /app/data/state.json
     ports:
       - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"

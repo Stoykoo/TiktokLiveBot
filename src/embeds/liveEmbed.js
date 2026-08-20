@@ -17,7 +17,7 @@ function createLiveEmbed({ platform, username, title, roomLink, viewerCount, cov
             name: `🔴 ¡Estamos EN VIVO en ${platformName}!`,
             iconURL: iconUrl
         })
-        .setTitle(title || `¡Acompáñanos en el directo de @${username}!`)
+        .setTitle(String(title || `¡Acompáñanos en el directo de @${username}!`).slice(0, 256))
         .setURL(roomLink)
         .setDescription(`**${username}** acaba de iniciar transmisión en vivo.\n¡No te lo pierdas y ven a saludar en el chat! 🚀`)
         .addFields(
@@ -31,11 +31,11 @@ function createLiveEmbed({ platform, username, title, roomLink, viewerCount, cov
         embed.addFields({ name: '👥 Espectadores', value: `${viewerCount}`, inline: true });
     }
 
-    if (avatarUrl) {
+    if (isHttpUrl(avatarUrl)) {
         embed.setThumbnail(avatarUrl);
     }
 
-    if (coverUrl) {
+    if (isHttpUrl(coverUrl)) {
         embed.setImage(coverUrl);
     }
 
@@ -46,18 +46,31 @@ function createLiveEmbed({ platform, username, title, roomLink, viewerCount, cov
             .setURL(roomLink)
     );
 
-    let content = null;
+    let content;
+    const allowedMentions = { parse: [] };
     if (pingRole) {
         if (pingRole === 'everyone') {
             content = '@everyone 🔴 ¡ESTAMOS EN DIRECTO!';
+            allowedMentions.parse.push('everyone');
         } else if (pingRole === 'here') {
             content = '@here 🔴 ¡ESTAMOS EN DIRECTO!';
+            allowedMentions.parse.push('everyone');
         } else {
             content = `<@&${pingRole}> 🔴 ¡ESTAMOS EN DIRECTO!`;
+            allowedMentions.roles = [pingRole];
         }
     }
 
-    return { content, embeds: [embed], components: [row] };
+    return { content, embeds: [embed], components: [row], allowedMentions };
+}
+
+function isHttpUrl(value) {
+    if (!value || String(value).length > 2048) return false;
+    try {
+        return ['http:', 'https:'].includes(new URL(value).protocol);
+    } catch {
+        return false;
+    }
 }
 
 module.exports = { createLiveEmbed };

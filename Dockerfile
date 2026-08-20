@@ -1,20 +1,16 @@
-# Usar una imagen oficial de Node.js ultra ligera basada en Alpine Linux
 FROM node:20-alpine
 
-# Establecer el directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# Copiar archivos de dependencias
 COPY package*.json ./
 
-# Instalar dependencias de producción
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
-# Copiar el resto del código del proyecto
 COPY . .
 
-# Exponer el puerto para el servidor HTTP de salud / keep-alive
 EXPOSE 3000
 
-# Comando por defecto para iniciar el bot
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+    CMD node -e "require('http').get({host:'127.0.0.1',port:process.env.PORT||3000,path:'/healthz'},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+
 CMD ["node", "src/index.js"]

@@ -3,3 +3,6 @@ node_modules
 .env
 npm-debug.log
 .DS_Store
+state.json
+data
+test

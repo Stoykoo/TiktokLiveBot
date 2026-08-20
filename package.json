@@ -1,15 +1,19 @@
 {
   "name": "tiktok-live-discord-bot",
-  "version": "1.0.0",
-  "description": "Bot de Discord para notificar transmisiones en vivo de TikTok / Twitch",
+  "version": "2.0.0",
+  "description": "Bot de Discord con notificaciones deduplicadas de TikTok Live y Twitch",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "node --test"
   },
   "keywords": ["discord", "tiktok", "live", "notification", "bot"],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "axios": "^1.7.9",
     "discord.js": "^14.16.3",
